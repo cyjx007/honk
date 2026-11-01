@@ -588,10 +588,21 @@ fn framing_table() {
         (0xffff, 0, Unsupported),
         (778 + 1, 0, Unsupported),
     ] {
-        assert_eq!(Framing::of(arphrd, flags), want, "{arphrd} {flags:#x}");
+        assert_eq!(Framing::of(arphrd, flags, false), want, "{arphrd} {flags:#x}");
     }
     // Ethernet framing never depends on flags.
-    assert_eq!(Framing::of(1, P2P | BROADCAST), L2);
+    assert_eq!(Framing::of(1, P2P | BROADCAST, false), L2);
+}
+
+/// A 6-byte hardware address on `ARPHRD_RAWIP` means the link header exists even
+/// though the type says bare IP (#415). No other L3 family may move to L2.
+#[test]
+fn rawip_with_hardware_address_is_l2() {
+    use Framing::*;
+    assert_eq!(Framing::of(519, 0, true), L2);
+    assert_eq!(Framing::of(519, 0, false), L3);
+    assert_eq!(Framing::of(512, 0, true), L3);
+    assert_eq!(Framing::of(768, 0, true), L3);
 }
 
 fn refused(arphrd: u16) -> UnboundReason {

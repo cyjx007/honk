@@ -132,7 +132,8 @@ impl std::fmt::Display for RefusedReason {
 }
 
 /// Which TC program family fits a link; decided from `(ifi_type, ifi_flags)`
-/// alone, so a bond or team master follows its current first port.
+/// and whether the link has a hardware address, so a bond or team master
+/// follows its current first port.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Framing {
     /// Ethernet header at the TC hook.
@@ -146,9 +147,15 @@ const ARPHRD_RAWIP: u16 = 519;
 const ARPHRD_IP6GRE: u16 = 823;
 
 impl Framing {
-    pub(crate) fn of(arphrd: u16, flags: u32) -> Self {
+    pub(crate) fn of(arphrd: u16, flags: u32, has_hwaddr: bool) -> Self {
         match arphrd {
             libc::ARPHRD_ETHER => Self::L2,
+            // Some WWAN drivers register `ARPHRD_RAWIP` yet hand TC frames that
+            // still carry a 14-byte link header (UNISOC SIPA on UMS9620). The
+            // 6-byte hardware address is the only signal userspace has; parsing
+            // those frames at offset 0 yields no tuple, so locally generated
+            // traffic is never matched and passes unproxied (#415).
+            ARPHRD_RAWIP if has_hwaddr => Self::L2,
             libc::ARPHRD_NONE
             | libc::ARPHRD_PPP
             | ARPHRD_RAWIP
@@ -171,7 +178,7 @@ impl Framing {
 fn refusal(root: &LinkSnapshot) -> Option<RefusedReason> {
     if root.kind.as_deref() == Some("vrf") {
         Some(RefusedReason::VrfRoot)
-    } else if Framing::of(root.arphrd, root.flags) == Framing::Unsupported {
+    } else if Framing::of(root.arphrd, root.flags, root.mac.is_some()) == Framing::Unsupported {
         Some(RefusedReason::UnsupportedType {
             arphrd: root.arphrd,
         })
@@ -505,7 +512,7 @@ fn bind(
     lan: bool,
 ) {
     // A bridge port the programs cannot parse is skipped.
-    let l2 = match Framing::of(link.arphrd, link.flags) {
+    let l2 = match Framing::of(link.arphrd, link.flags, link.mac.is_some()) {
         Framing::L2 => true,
         Framing::L3 => false,
         Framing::Unsupported => return,
