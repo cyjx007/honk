@@ -605,6 +605,27 @@ fn rawip_with_hardware_address_is_l2() {
     assert_eq!(Framing::of(768, 0, true), L3);
 }
 
+/// The planner turns that verdict into the WAN L2 programs, which is what makes
+/// the datapath parse the link header; without the address it stays bare-IP.
+#[test]
+fn rawip_wan_with_hardware_address_binds_l2() {
+    let wwan = link(2, "wwan0")
+        .arphrd(519)
+        .mac(Some([0xb6, 0x5d, 0x4e, 0x7c, 0xd9, 0x9d]));
+    let plan = run(&[], &["wwan0"], &[vec![link(1, "lo").arphrd(772), wwan]]);
+    assert_eq!(
+        set(&plan),
+        ["2 in wan_ingress_l2", "2 eg wan_egress_l2"]
+    );
+
+    let rmnet = link(2, "rmnet0").arphrd(519);
+    let plan = run(&[], &["rmnet0"], &[vec![link(1, "lo").arphrd(772), rmnet]]);
+    assert_eq!(
+        set(&plan),
+        ["2 in wan_ingress_l3", "2 eg wan_egress_l3"]
+    );
+}
+
 fn refused(arphrd: u16) -> UnboundReason {
     UnboundReason::Refused(RefusedReason::UnsupportedType { arphrd })
 }

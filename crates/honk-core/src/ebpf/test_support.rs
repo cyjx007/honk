@@ -20,12 +20,18 @@ pub(crate) trait LinkExt {
     fn master(self, master: u32) -> Self;
     fn kind(self, kind: &str) -> Self;
     fn flags(self, flags: u32) -> Self;
+    fn mac(self, mac: Option<[u8; 6]>) -> Self;
 }
 
 impl LinkExt for LinkSnapshot {
     fn arphrd(mut self, arphrd: u16) -> Self {
         self.arphrd = arphrd;
         self.mac = None;
+        self
+    }
+
+    fn mac(mut self, mac: Option<[u8; 6]>) -> Self {
+        self.mac = mac;
         self
     }
 
