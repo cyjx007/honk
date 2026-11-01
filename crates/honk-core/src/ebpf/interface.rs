@@ -147,7 +147,7 @@ const ARPHRD_RAWIP: u16 = 519;
 const ARPHRD_IP6GRE: u16 = 823;
 
 impl Framing {
-    pub(crate) fn of(arphrd: u16, flags: u32, has_hwaddr: bool) -> Self {
+    pub(crate) fn of(arphrd: u16, flags: u32, has_mac: bool) -> Self {
         match arphrd {
             libc::ARPHRD_ETHER => Self::L2,
             // Some WWAN drivers register `ARPHRD_RAWIP` yet hand TC frames that
@@ -155,7 +155,7 @@ impl Framing {
             // 6-byte hardware address is the only signal userspace has; parsing
             // those frames at offset 0 yields no tuple, so locally generated
             // traffic is never matched and passes unproxied (#415).
-            ARPHRD_RAWIP if has_hwaddr => Self::L2,
+            ARPHRD_RAWIP if has_mac => Self::L2,
             libc::ARPHRD_NONE
             | libc::ARPHRD_PPP
             | ARPHRD_RAWIP
