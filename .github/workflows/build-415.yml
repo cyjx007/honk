@@ -13,6 +13,57 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    name: cargo test (workspace)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read Rust toolchain
+        id: toolchain
+        run: echo "stable=$(grep -oP '^channel\s*=\s*"\K[^"]+' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ steps.toolchain.outputs.stable }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          cache-on-failure: true
+      - name: Install boring-sys build deps (cmake + libclang for bindgen)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake libclang-dev
+      # routing::tests::test_geosite_* need geo assets at /etc/dae.
+      - name: Read geo cache key
+        id: geo-pins
+        run: |
+          set -euo pipefail
+          source .github/ci/pins.env
+          echo "key=$GEOSITE_SHA256-$GEOIP_SHA256" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/geo-assets
+          key: geo-${{ steps.geo-pins.outputs.key }}
+      - name: Install geo assets for the geosite tests
+        run: |
+          set -euo pipefail
+          source .github/ci/pins.env
+          geo_dir="$RUNNER_TEMP/geo-assets"
+          mkdir -p "$geo_dir"
+          if ! test -f "$geo_dir/geosite.dat"; then
+            curl -fsSL --retry 3 -o "$geo_dir/geosite.dat" \
+              "https://github.com/v2fly/domain-list-community/releases/download/$GEOSITE_TAG/dlc.dat"
+          fi
+          if ! test -f "$geo_dir/geoip.dat"; then
+            curl -fsSL --retry 3 -o "$geo_dir/geoip.dat" \
+              "https://github.com/v2fly/geoip/releases/download/$GEOIP_TAG/geoip.dat"
+          fi
+          echo "$GEOSITE_SHA256  $geo_dir/geosite.dat" | sha256sum -c -
+          echo "$GEOIP_SHA256  $geo_dir/geoip.dat" | sha256sum -c -
+          sudo install -D -m 0644 "$geo_dir/geosite.dat" /etc/dae/geosite.dat
+          sudo install -D -m 0644 "$geo_dir/geoip.dat" /etc/dae/geoip.dat
+      - run: cargo test --workspace --no-fail-fast
+
   build:
     name: build aarch64-unknown-linux-musl-full
     runs-on: ubuntu-24.04
